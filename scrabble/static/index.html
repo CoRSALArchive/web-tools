@@ -1,0 +1,25 @@
+<html>
+  <head>
+  </head>
+  <body>
+    <form enctype="multipart/form-data" method="POST">
+      <input type="file" name="corpus" accept=".txt,.db"></input>
+      <select name="filetype">
+	<option value="txt">Plaintext corpus</option>
+	<option value="flextsv">Tab-delimited wordform list (FLEx Lexicon &gt; Export &gt; Wordforms Tab-delimited)</option>
+	<option value="database">Lexicon Database (SFM)</option>
+      </select>
+      <br/>
+      <label for="number">Number of tiles</label>
+      <input type="number" name="tiles" value="100"></input>
+      <br/>
+      <label for="digraphs">Digraphs (separate with spaces)</label>
+      <input type="text" name="digraphs"></input>
+      <br/>
+      <label for="buckets">Buckets (number of distinct scores/count combinations)</label>
+      <input type="number" name="buckets" value="12"></input>
+      <br/>
+      <input type="submit">
+    </form>
+  </body>
+</html>

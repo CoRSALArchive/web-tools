@@ -1,0 +1,408 @@
+<html>
+  <head>
+    <title>Dimasa Corpus Query Tool</title>
+    <style>
+      #query-submit { display: none; }
+      #sentences {
+          height: 40%;
+          overflow-y: scroll;
+      }
+      #features {
+          height: 40%;
+          overflow-y: scroll;
+      }
+      #features-filter-div, #features-group-div {
+          width: 45%;
+          display: inline-block;
+          vertical-align: top;
+      }
+      .match {
+          color: green;
+      }
+      .sentence {
+          border: 1px solid grey;
+      }
+      .sentence-group .sentence {
+          margin-left: 20px;
+      }
+      .group-header {
+          background: lightblue;
+          padding: 10px;
+          display: block;
+      }
+      .feat-count {
+          padding: 2px;
+          margin-left: 10px;
+      }
+      .word {
+          width: 100px;
+      }
+      .graph {
+          display: inline-block;
+          height: 15px;
+      }
+      .graph:nth-child(3n+1) {
+          background: red;
+      }
+      .graph:nth-child(3n+2) {
+          background: green;
+      }
+      .graph:nth-child(3n) {
+          background: blue;
+      }
+    </style>
+    <script type="text/javascript" src="jquery.js"></script>
+  </head>
+  <body>
+    <form id="query-submit" method="post">
+      <input type="text" id="query-text" name="query"/>
+      <input type="text" id="query-params" name="query-params"/>
+      <button id="submit-button" type="submit"></button>
+    </form>
+    <table>
+      <tbody>
+        <tr id="selectors"></tr>
+      </tbody>
+    </table>
+    <button id="search">Search</button>
+    <div id="sentences">
+    </div>
+    <span id="sentence-status"></span>
+    <div id="features">
+      <div id="features-filter-div">
+        <select id="feature-role"></select>
+        <div id="feature-filters"></div>
+        <button id="add-feature-filter">Add Filter</button>
+        <ul id="feature-freq"></ul>
+        <p>Denominators in the filter summary are the number of words in the corpus with that value for that feature.</p>
+      </div>
+      <div id="features-group-div">
+        <div id="feature-groups"></div>
+        <button id="add-feature-group">Add Grouping Condition</button>
+        <div id="feature-groups-graph"></div>
+      </div>
+    </div>
+    <script type="text/javascript">
+      {% autoescape off %}
+      var DATA = {{data}};
+      var MATCH = {{match}};
+      var QUERY_PARAMS = {{params}};
+      {% endautoescape %}
+      var Roles = ['verb', 'subject', 'agent', 'patient', 'goal', 'theme', 'oblique'];
+      function make_selector(name) {
+          let ret = '<td data-role="'+name+'" id="'+name+'-selector" class="selector"><b>'+name+'</b><br/>';
+          ret += '<select class="overt">';
+          
+          if (name != 'verb') {
+              ret += '<option value="any">Any</option>';
+              ret += '<option value="none">Not Present</option>';
+          }
+          ret += '<option value="present">Present</option>';
+          ret += '<option value="overt">Overt</option>';
+          ret += '<option value="null">Null</option>';
+          if (name != 'verb') {
+              ret += '<option value="lonely">Lonely</option>';
+          }
+          ret += '</select><input type="text" class="word"></input>';
+          return ret + '</td>';
+      }
+      function submit() {
+          let params = {};
+          let pos_query = [];
+          let neg_query = [];
+          let need_verb = true;
+          let lonely = [];
+          $('.selector').map(function() {
+              let name = $(this).data('role');
+              let overt = $(this).children('.overt').val();
+              let wordform = $(this).children('.word').val();
+              console.log(overt);
+              params[name] = {};
+              params[name].overt = overt;
+              params[name].wordform = wordform;
+              console.log(params);
+              if (overt == 'none') {
+                  neg_query.push('verb -['+name+']-> *');
+              } else if (overt == 'present') {
+                  if (name != 'verb') {
+                      need_verb = false;
+                      pos_query.push('verb -['+name+']-> '+name);
+                  }
+                  if (wordform.length > 0) {
+                      pos_query.push(name + '[form="'+wordform+'"]');
+                  } else {
+                      pos_query.push(name + '[]');
+                  }
+              } else if (overt == 'overt') {
+                  if (name != 'verb') {
+                      need_verb = false;
+                      pos_query.push('verb -['+name+']-> '+name);
+                  }
+                  if (wordform.length > 0) {
+                      pos_query.push(name + '[form="'+wordform+'"]');
+                  } else {
+                      pos_query.push(name + '[form<>re"\\[.*\\]"]');
+                  }
+              } else if (overt == 'null') {
+                  if (name != 'verb') {
+                      need_verb = false;
+                      pos_query.push('verb -['+name+']-> '+name);
+                  }
+                  if (wordform.length > 0) {
+                      pos_query.push(name + '[form="'+wordform+'"]');
+                  } else {
+                      pos_query.push(name + '[form=re"\\[.*\\]"]');
+                  }
+              } else if (overt == 'lonely') {
+                  lonely.push(name);
+                  need_verb = false;
+              }
+          });
+          if (need_verb) {
+              pos_query.push('* -[root|conj|acl|complement]-> verb');
+          }
+          if (lonely.length > 0) {
+              let rel = lonely.join('|');
+              pos_query.push('verb -['+rel+']-> N');
+              pos_query.push('N[form<>re"\\[.*\\]"]');
+              neg_query.push('N2[form<>re"\\[.*\\]"]; verb -['+rel+']-> N2');
+          }
+          $('#query-params').val(JSON.stringify(params));
+          let query = 'pattern {\n' + pos_query.map(x => '  '+x+';\n').join('') + '}\n';
+          if (neg_query.length > 0) {
+              query += neg_query.map(x => 'without { '+x+' }\n').join('');
+          }
+          $('#query-text').val(query);
+          $('#submit-button').click();
+      }
+      function make_sentence(sent_id, match, idx) {
+          let sent = DATA.sentences[sent_id];
+          let ret = '<div data-idx="'+idx+'" class="sentence" id="match'+idx+'"><span class="sent_id">';
+          ret += sent.document + ' ' + sent.id + '</span>';
+          ret += '<p>';
+          ret += sent.order.map(function(wid) {
+              let ret = sent.words[wid].form;
+              if (match) {
+                  for (k in match.matching.nodes) {
+                      if (match.matching.nodes[k] == wid) {
+                          ret = '<span class="match" data-role="'+k+'">'+ret+'</span>';
+                      }
+                  }
+              }
+              return ret;
+          }).join(' ');
+          ret += '</p>';
+          if (sent.trans) {
+              ret += '<p>'+sent.trans+'</p>';
+          }
+          ret += '</div>';
+          return ret;
+      }
+      function make_sentences() {
+          if (MATCH.length == 0) {
+              return DATA.order.map((x, i) => make_sentence(x, null, i)).join('');
+          } else {
+              // n^2 loop not ideal
+              return DATA.order.map(
+                  sid => MATCH.map(
+                      (m, i) => (m.sent_id == sid ? make_sentence(sid, m, i) : '')
+                  ).join('')
+              ).join('');
+          }
+      }
+      function feat_name_sel() {
+          let s = '<select class="feat-name"><option value="null">---</option>';
+          for (let k of Object.keys(DATA.feats).sort()) {
+              if (k == 'Gloss') continue;
+              s += '<option value="'+k+'">'+k+'</option>';
+          }
+          return s + '</select>';
+      }
+      function add_feat_group() {
+          let ret = '<div class="feature-group">';
+          ret += '<select class="role">';
+          ret += Roles.map(x => '<option value="'+x+'">'+x+'</option>').join('');
+          ret += '</select>';
+          ret += feat_name_sel();
+          ret += '<span class="del-feat-group">X</span>';
+          ret += '</div>';
+          let n = $(ret);
+          n.appendTo('#feature-groups');
+          n.children('select').change(do_feat_groups);
+          n.children('.del-feat-group').click(function() {
+              $(this).parent().remove();
+              do_feat_groups();
+          });
+      }
+      function do_feat_groups() {
+          let groups = {};
+          let keys = $('#feature-groups').children().map(
+              function(_, el) {
+                  return {
+                      role: $(el).children('.role').val(),
+                      feat: $(el).children('.feat-name').val(),
+                  };
+              }
+          ).get();
+          for (let i = 0; i < MATCH.length; i++) {
+              let m = MATCH[i];
+              let labels = [];
+              for (let k of keys) {
+                  if (k.feat == 'null') continue;
+                  let n = m.matching.nodes[k.role];
+                  let v = '[none]';
+                  if (n != undefined) {
+                      let fd = DATA.sentences[m.sent_id].words[n].feats;
+                      if (fd.hasOwnProperty(k.feat)) {
+                          v = fd[k.feat];
+                      }
+                  }
+                  labels.push(k.role+'.'+k.feat+'='+v);
+              }
+              let lab = labels.join(' ');
+              if (!groups.hasOwnProperty(lab)) {
+                  groups[lab] = [];
+              }
+              groups[lab].push('match'+i);
+          }
+          let gps = Object.keys(groups).sort();
+          $('#sentences').html(gps.map(
+              name => '<div class="sentence-group"><span class="group-header" data-group="'+name+'">'+name+' '+groups[name].length+'</span>'+groups[name].map(id => document.getElementById(id).outerHTML).join('')+'</div>'
+          ).join(''));
+          let total = gps.reduce((a, v) => (a + groups[v].length), 0);
+          $('#feature-groups-graph').html(gps.map(
+              function(name) {
+                  let n = groups[name].length;
+                  let p = Math.floor(100*n/total);
+                  return '<span class="graph" style="width: '+(p*3)+'px;" title="'+name+' ('+n+'/'+total+' = '+p+'%)" data-group="'+name+'"></span>';
+              }
+          ).join(''));
+      }
+      function add_feat_filter() {
+          let node = '<div class="feature-filter">';
+          node += feat_name_sel();
+          node += '<select class="feat-val"></select>';
+          node += '<span class="del-feat-filter">X</span>';
+          node +='</div>';
+          let n = $(node);
+          n.appendTo('#feature-filters');
+          n.children('.feat-name').change(update_feat_options);
+          n.children('.del-feat-filter').click(function() {
+              $(this).parent().remove();
+              do_feat_filter();
+          });
+      }
+      function update_feat_options() {
+          let feat = $(this).val();
+          let vals = $(this).parent().children('.feat-val');
+          if (feat == 'null') {
+              vals.html('');
+          } else {
+              vals.html(
+                  '<option value="undefined">[none]</option>' +
+                      DATA.feats[feat].map(
+                          f => '<option value="'+f+'">'+f+'</option>'
+                      ).join('')
+              );
+          }
+          vals.change(do_feat_filter);
+          do_feat_filter();
+      }
+      function make_feat_count(feats, f, v) {
+          if (feats[f][v] > 0) {
+              let ret = '<span class="feat-count">'+v+' '+feats[f][v];
+              if (DATA.feat_freq.hasOwnProperty(f) &&
+                  DATA.feat_freq[f].hasOwnProperty(v)) {
+                  ret += ' / '+DATA.feat_freq[f][v];
+              }
+              ret += '</span>';
+              return ret;
+          }
+          return '';
+      }
+      function do_feat_filter() {
+          let filters = $('#feature-filters').children().map(
+              function(_, el) {
+                  return {
+                      feat: $(el).children('.feat-name').val(),
+                      val: $(el).children('.feat-val').val(),
+                  };
+              }
+          ).get();
+          let feats = {};
+          for (let k in DATA.feats) {
+              if (k == 'Gloss') continue;
+              feats[k] = {};
+              feats[k]['[none]'] = 0;
+              DATA.feats[k].forEach(function(v) { feats[k][v] = 0 });
+          }
+          let role = $('#feature-role').val();
+          let filter_count = 0;
+          for (let m_idx = 0; m_idx < MATCH.length; m_idx++) {
+              let m = MATCH[m_idx];
+              let n = m.matching.nodes[role];
+              if (n == undefined) continue;
+              let fd = DATA.sentences[m.sent_id].words[n].feats;
+              let pass = true;
+              for (let fl of filters) {
+                  if (fl.feat == 'null') continue;
+                  if (fl.val == 'undefined' && !fd.hasOwnProperty(fl.feat)) {
+                      continue;
+                  }
+                  if (fd[fl.feat] != fl.val) {
+                      pass = false;
+                      break;
+                  }
+              }
+              if (!pass) {
+                  $('#match'+m_idx).hide();
+                  continue;
+              }
+              $('#match'+m_idx).show();
+              filter_count++;
+              for (let k in DATA.feats) {
+                  if (k == 'Gloss') continue;
+                  if (fd.hasOwnProperty(k)) {
+                      feats[k][fd[k]] += 1;
+                  } else {
+                      feats[k]['[none]'] += 1;
+                  }
+              }
+          }
+          $('#sentence-status').html('Corpus: '+DATA.order.length+' sentences, Query: '+MATCH.length+' clauses, Filter: '+filter_count+' clauses');
+          $('#feature-freq').html(
+              Object.keys(feats).sort().map(
+                  function(f) {
+                      let vals = Object.keys(feats[f]).sort(
+                          (a, b) => (feats[f][b] - feats[f][a])
+                      ).map(
+                          v => make_feat_count(feats, f, v)
+                      ).join('');
+                      return (vals.length > 0 ? '<li>'+f+': '+vals+'</li>' : '');
+                  }
+              ).join('')
+          );
+      }
+      $(function() {
+          $('#selectors').html(Roles.map(make_selector).join(''));
+          $('#feature-role').html(Roles.map(r => '<option value="'+r+'">'+r+'</option>').join('')).change(do_feat_filter);
+          for (let k in QUERY_PARAMS) {
+              let obj = QUERY_PARAMS[k];
+              $('#'+k+'-selector .overt').val(obj.overt || (k == 'verb' ? 'present' : 'any'));
+              $('#'+k+'-selector .word').val(obj.wordform || '');
+          }
+          $('#sentences').html(make_sentences());
+          $('#add-feature-filter').click(add_feat_filter);
+          $('#add-feature-group').click(add_feat_group);
+          $('#search').click(submit);
+          do_feat_filter();
+          if (MATCH.length == 0) {
+              $('#add-feature-group').hide();
+          }
+          $(document).on('click', '.graph', function() {
+              $('.group-header[data-group="'+$(this).data('group')+'"]')[0].scrollIntoView();
+          });
+      });
+    </script>
+  </body>
+</html>

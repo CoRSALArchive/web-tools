@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  </head>
+  <body>
+    <form enctype="multipart/form-data" method="POST">
+      <input type="file" name="spreadsheet" accept=".csv"></input>
+      <br/>
+      <label for="lang1">Vernacular Language Code</label>
+      <input id="lang1" name="lang1" type="text"></input>
+      <label for="lang2">Analysis Language Code</label>
+      <input id="lang2" name="lang2" type="text" value="en"></input>
+      <br/>
+      <label for="header">First Row is Header</label>
+      <input id="header" type="checkbox" name="header" checked></input>
+      <label for="csvsep">CSV Separator</label>
+      <input id="csvsep" value="," name="csvsep"></input>
+      <label for="csvquote">CSV Quote</label>
+      <input id="csvquote" value="&quot;" name="csvquote"></input>
+      <br/>
+      <label for="add_sense">New Sense Marker</label>
+      <input id="add_sense" value="+" name="add_sense"></input>
+      <label for="add_ex">New Example Marker</label>
+      <input id="add_ex" value="&amp;" name="add_ex"></input>
+      <table border=1>
+	<thead>
+	  <tr>
+	    <th>Column Type</th>
+	    <th>Separator</th>
+	    <th>Delete</th>
+	  </tr>
+	</thead>
+	<tbody id="cols">
+	</tbody>
+      </table>
+      <a href="#" onclick="add_row();">Add Column</a>
+      <br/>
+      <input type="submit" value="Convert"/>
+    </form>
+    <p>Language codes can be found in FLEx by going to the <b>Tools</b> menu and then selecting <b>Configure</b> and then <b>Set up Vernacular Writing Systems...</b> or <b>Set up Analysis Writing Systems...</b>.</p>
+    <p>Export your spreadsheet as a CSV before uploading it, and make sure that what you select as the separator and quote character in the export process are the same as what is in the fields above.</p>
+    <p>The separator value has no effect on <i>Lexical Form</i> and <i>Citation Form</i>, but will split other columns in to multiple senses/pronunciations/notes/etc. per entry.</p>
+    <p>Any row of the spreadsheet where the first column matches the <i>New Sense Marker</i> will be treated as an additional sense of the preceeding row, rather than a new entry. Similarly, any row beginning with the <i>New Example Marker</i> can be used to add an additional example sentence to the preceding row.</p>
+    <p>To import the resulting dictionary into FLEx, go to <b>File</b>, then <b>Import</b>, then <b>LIFT Lexicon...</b> and then follow the prompts.</p>
+    <script type="text/javascript">
+      var options = [
+	  ['form', 'Lexical Form'],
+	  ['cite', 'Citation Form'],
+	  ['pos', 'Part of Speech'],
+	  ['phon', 'Pronunciation'],
+	  ['var', 'Variants'],
+	  ['gloss', 'Glosses'],
+	  ['def', 'Definitions'],
+	  ['note', 'Notes'],
+	  ['ex', 'Example Sentence'],
+	  ['extrans', 'Example Translation'],
+      ];
+      var sel = options.map(x => '<option value="'+x[0]+'">'+x[1]+'</option>').join('');
+      var row_count = 0;
+      var row_tmpl = '<td><select name="type{0}">'+sel+'</select></td><td><input name="sep{0}" type="text"></input></td><td class="del">X</td>';
+      var table = document.getElementById('cols');
+      function add_row() {
+	  row_count += 1;
+	  let el = document.createElement('tr');
+	  el.innerHTML = row_tmpl.replaceAll('{0}', row_count);
+	  el.children[2].addEventListener('click', del_row);
+	  table.appendChild(el);
+      }
+      function del_row(e) {
+	  e.target.parentElement.remove();
+      }
+      add_row();
+    </script>
+  </body>
+</html>
